@@ -21,6 +21,9 @@
 		}							\
 	} while (0)
 
+#define MIN(a, b) ((a < b) ? a : b)
+#define MAX(a, b) ((a < b) ? b : a)
+
 static so_exec_t *exec;
 static int pageSize;
 static struct sigaction old_action;
@@ -54,7 +57,7 @@ static void segv_handler(int signum, siginfo_t *info, void *context)
 	char *data;
 	int page, rc, fdin;
 	so_seg_t segment;
-	int fileSize;
+	int mappingSize, fileSize;
 	void *pageAddress;
 
 	/* Check if the signal is SIGSEGV */
@@ -93,33 +96,40 @@ static void segv_handler(int signum, siginfo_t *info, void *context)
 	/* Compute page starting address */
 	pageAddress = (void *) (ALIGN_DOWN((uintptr_t) addr, pageSize));
 
+	/* Effective data to be written from file */
+	mappingSize = segment.file_size -
+		(int) ((uintptr_t) pageAddress - segment.vaddr);
+	mappingSize = MIN(pageSize, MAX(0, mappingSize));
+
 	fdin = open(filename, O_RDONLY);
 	DIE(fdin == -1, "open file");
 
+	/* Get file size */
 	fileSize = lseek(fdin, 0, SEEK_END);
-	DIE(fileSize == -1, "fstat");
+	DIE(fileSize == -1, "lseek");
 
 	/* Map a page-sized chunk of file,
 	 * starting from offset
 	 */
-	src = mmap(0, pageSize, PROT_READ, MAP_SHARED, fdin,
+	src = mmap(0, fileSize, PROT_READ, MAP_SHARED, fdin,
 			segment.offset + page * pageSize);
 	DIE(src == (char *) -1, "mmap");
 
 	/* Map page in memory.
 	 * MAP_PRIVATE zeroizes page.
 	 * Give write permissions so we can write data to
-	 * it and manage demanded permissions later
+	 * it and read for .bss and
+	 * manage demanded permissions later
 	 */
-	dst = mmap(pageAddress, pageSize, PROT_WRITE,
+	dst = mmap(pageAddress, pageSize, PROT_WRITE | PROT_READ,
 			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	DIE(dst == (char *) -1, "mmap");
 
 	/* Copy data */
-	memcpy(dst, src, pageSize);
+	memcpy(dst, src, mappingSize);
 
 	/* Manage permissions */
-	mprotect(pageAddress, pageSize, segment.perm);
+	mprotect(pageAddress, mappingSize, segment.perm);
 
 	/* Clean up */
 	rc = munmap(src, pageSize);

@@ -1,0 +1,21 @@
+            # Unguru Dragos-Gabriel, 336CC
+                    # Homework 3, OS
+
+    
+    The following implementation is my approach for an
+executable loader that implements the on-demand paging.
+
+    The on-demand paging is put into practice by handling
+page faults via the SIGSEGV signal handler.
+    By getting the address that was demanded for a read
+or write, we'll get the corresponding memory page.
+        -> If it is already mapped, exit with default
+            SIGSEGV handler.
+        -> If the address is invalid (outside our memory space),
+            exit with default SIGSEGV handler.
+        -> If this is the first access to the page (minor page fault)
+            map the page containing the address that caused the fault
+            and copy data from the file exec. file.
+
+    For further implementation details, the code is thoroughly
+commented.
